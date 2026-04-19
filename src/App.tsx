@@ -33,18 +33,35 @@ type SampleAudioCase = {
   midiUrl?: string;
 };
 
+function stemAudioForSample(id: SampleId): Partial<Record<Instrument, string>> {
+  const keys: Instrument[] = ['piano', 'guitar', 'bass', 'drums', 'other', 'vocals'];
+  return Object.fromEntries(keys.map((k) => [k, `/samples/${id}-${k}.wav`])) as Partial<
+    Record<Instrument, string>
+  >;
+}
+
 /** 本地测试音频（来自项目 test/test-02～test-04），供一键填入输入框做音轨分离 */
 const SAMPLE_AUDIO_CASES: readonly SampleAudioCase[] = [
   {
     id: 'test-02',
     label: '陶喆·爱我还是他',
     path: '/samples/test-02.mp3',
-    stemAudio: { piano: '/samples/test-02-piano.wav' },
+    stemAudio: stemAudioForSample('test-02'),
     scoreUrl: '/samples/test-02-piano.musicxml',
     midiUrl: '/samples/test-02-piano.mid',
   },
-  { id: 'test-03', label: '王菲·红豆', path: '/samples/test-03.mp3' },
-  { id: 'test-04', label: '周杰伦·七里香', path: '/samples/test-04.mp3' },
+  {
+    id: 'test-03',
+    label: '王菲·红豆',
+    path: '/samples/test-03.mp3',
+    stemAudio: stemAudioForSample('test-03'),
+  },
+  {
+    id: 'test-04',
+    label: '周杰伦·七里香',
+    path: '/samples/test-04.mp3',
+    stemAudio: stemAudioForSample('test-04'),
+  },
 ];
 
 /** 每张卡片独立的暖色渐变，与首页纸质调性一致 */

@@ -5,7 +5,9 @@ import { Music, ChevronLeft } from 'lucide-react';
 import { cn } from '../lib/utils';
 import type { Instrument, SelectedTrack } from '../types';
 import { resolvePracticeAudioSrc } from '../lib/practiceAudio';
+import { useWaveformPeaks } from '../lib/useWaveformPeaks';
 import { ScoreViewer } from './ScoreViewer';
+import { WaveformSeekBar } from './WaveformSeekBar';
 
 const INSTRUMENT_LABELS: Record<Instrument, string> = {
   piano: '钢琴',
@@ -61,6 +63,8 @@ export function PracticePage({ instrument, selectedTrack, onNext, onBack }: Prac
     () => resolvePracticeAudioSrc(selectedTrack, instrument),
     [selectedTrack, instrument]
   );
+
+  const waveformState = useWaveformPeaks(audioSrc);
 
   const pauseAndResetAudio = useCallback(() => {
     const el = audioRef.current;
@@ -148,10 +152,11 @@ export function PracticePage({ instrument, selectedTrack, onNext, onBack }: Prac
     return audioClock.duration > 0 ? audioClock.duration : timelineDurationSec;
   }, [hasScoreSync, audioClock.duration, timelineDurationSec]);
 
-  const scoreSyncProgressRatio = useMemo(() => {
-    if (!hasScoreSync || sessionMode === 'idle' || displayDuration <= 0) return 0;
+  /** 与 <audio> 一致的真实进度（含 idle 暂停态，便于拖动后显示位置） */
+  const playbackProgressRatio = useMemo(() => {
+    if (displayDuration <= 0) return 0;
     return Math.min(1, Math.max(0, audioClock.current / displayDuration));
-  }, [hasScoreSync, sessionMode, displayDuration, audioClock.current]);
+  }, [displayDuration, audioClock.current]);
 
   const syncAudioClockAndProgress = useCallback(() => {
     const el = audioRef.current;
@@ -159,7 +164,25 @@ export function PracticePage({ instrument, selectedTrack, onNext, onBack }: Prac
     const dur = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : 0;
     const cur = Number.isFinite(el.currentTime) ? el.currentTime : 0;
     setAudioClock({ current: cur, duration: dur });
-  }, [hasScoreSync]);
+  }, []);
+
+  const handleWaveformSeek = useCallback(
+    (ratio: number) => {
+      const el = audioRef.current;
+      const dur =
+        el && Number.isFinite(el.duration) && el.duration > 0 ? el.duration : displayDuration;
+      if (dur <= 0) return;
+      const t = Math.min(dur, Math.max(0, ratio * dur));
+      if (el) {
+        el.currentTime = t;
+        setAudioClock({
+          current: t,
+          duration: Number.isFinite(el.duration) && el.duration > 0 ? el.duration : dur,
+        });
+      }
+    },
+    [displayDuration]
+  );
 
   // Background camera mocks based on instrument
   const cameraMocks: Record<Instrument, string> = {
@@ -372,9 +395,8 @@ export function PracticePage({ instrument, selectedTrack, onNext, onBack }: Prac
         </div>
       </div>
 
-      {/* Top UI: Vine Progress Bar — 有乐谱时跟音频；否则练习模式 6s 演示。
-          勿用 md:inset-x-32：md 按视口宽度触发，外层手机框仍约 375px 时会把轨道压成窄条 */}
-      <div className="absolute top-[5.75rem] left-8 right-8 z-20 sm:top-[7.75rem]">
+      {/* Top UI: 波形 + 可拖动 seek，与 <audio> 真实进度一致 */}
+      <div className="absolute top-[5.75rem] left-8 right-8 z-30 pb-2 sm:top-[7.75rem] sm:pb-2.5">
         <div className="flex flex-col gap-1.5">
           <div className="flex items-baseline justify-between gap-2 px-0.5 font-[family-name:var(--font-noto-ui-sans)] text-[11px] tabular-nums text-[#8a8177] sm:text-xs">
             <span title="当前播放位置">{formatPlaybackTime(audioClock.current)}</span>
@@ -382,44 +404,21 @@ export function PracticePage({ instrument, selectedTrack, onNext, onBack }: Prac
               {displayDuration > 0 ? formatPlaybackTime(displayDuration) : '—:—'}
             </span>
           </div>
-          <div className="relative h-1 min-h-[4px] rounded-full bg-[#e4dfd0]">
-            {hasScoreSync ? (
-              <div
-                className="absolute inset-y-0 left-0 rounded-full bg-[#8fa492] shadow-[0_0_8px_rgba(143,164,146,0.6)] transition-[width] duration-150 ease-linear"
-                style={{
-                  width:
-                    sessionMode === 'idle'
-                      ? '0%'
-                      : `${Math.min(100, Math.max(0, scoreSyncProgressRatio * 100))}%`,
-                }}
-              />
-            ) : (
-              <motion.div
-                className="absolute inset-y-0 left-0 rounded-full bg-[#8fa492] shadow-[0_0_8px_rgba(143,164,146,0.6)]"
-                initial={{ width: '0%' }}
-                animate={{ width: sessionMode === 'practice' ? '100%' : '0%' }}
-                transition={{ duration: 6, ease: 'linear' }}
-              />
-            )}
-            <div className="pointer-events-none absolute inset-x-0 -top-2 flex justify-between px-2 opacity-70">
-              {[...Array(6)].map((_, i) => (
-                <svg key={i} width="14" height="14" viewBox="0 0 24 24" fill="none" className="text-[#a3b1a5] sm:h-4 sm:w-4">
-                  <path
-                    d="M12 2C8 6 6 10 6 14C6 18 10 20 12 22C14 20 18 18 18 14C18 10 16 6 12 2Z"
-                    fill="currentColor"
-                    transform={`rotate(${i % 2 === 0 ? 15 : -15} 12 12)`}
-                  />
-                </svg>
-              ))}
-            </div>
-          </div>
+          <WaveformSeekBar
+            peaks={waveformState.status === 'ready' ? waveformState.peaks : null}
+            progress={playbackProgressRatio}
+            onSeek={handleWaveformSeek}
+            loading={waveformState.status === 'loading'}
+            disabled={displayDuration <= 0}
+            className="shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]"
+          />
         </div>
       </div>
 
-      {/* Center Dynamic Smart Score — 标题/进度条与底栏之间撑满 */}
+      {/* Center Dynamic Smart Score — 标题/进度条与底栏之间撑满（top 低于波形区，pt 与波形带拉开间距） */}
       <div
         className={cn(
-          'absolute inset-x-0 top-[9.25rem] sm:top-[11.5rem] bottom-[6rem] z-20 flex flex-col px-4 pointer-events-none min-h-0',
+          'absolute inset-x-0 top-[10.5rem] sm:top-[12.5rem] bottom-[6rem] z-20 flex flex-col px-4 pt-3 pointer-events-none min-h-0',
           !hasScoreSync && 'justify-center items-center'
         )}
       >
