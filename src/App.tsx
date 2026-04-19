@@ -35,7 +35,7 @@ type SampleAudioCase = {
 
 function stemAudioForSample(id: SampleId): Partial<Record<Instrument, string>> {
   const keys: Instrument[] = ['piano', 'guitar', 'bass', 'drums', 'other', 'vocals'];
-  return Object.fromEntries(keys.map((k) => [k, `/samples/${id}-${k}.wav`])) as Partial<
+  return Object.fromEntries(keys.map((k) => [k, `/samples/${id}-${k}.mp3`])) as Partial<
     Record<Instrument, string>
   >;
 }
